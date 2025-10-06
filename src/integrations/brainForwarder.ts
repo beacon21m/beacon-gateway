@@ -10,6 +10,7 @@ function makeRequest(body: PostMessage): ReceiveMessageRequest {
     returnGatewayID: pubkeyHex,
     networkID: body.networkId,
     botid: body.botId,
+    botType: body.botType,
     groupID: body.groupId,
     userId: body.userId,
     messageID: body.messageId,

@@ -1,6 +1,7 @@
 import { MessageBus } from "./sse/bus";
 import type { EnvConfig } from "./types";
 import { createMessageRoutes } from "./routes/messages";
+import { startReturnCvmServer } from "./cvm/returnServer";
 
 const config: EnvConfig = {
   port: Number(process.env.PORT || 3030),
@@ -10,6 +11,11 @@ const config: EnvConfig = {
 
 const bus = new MessageBus(config.maxMessagesPerChannel);
 const routes = createMessageRoutes(bus);
+
+// Start CVM return server (no announce, no whitelist)
+startReturnCvmServer(bus).catch((err) => {
+  console.error("[cvm:return] failed to start", err);
+});
 
 const server = Bun.serve({
   port: config.port,

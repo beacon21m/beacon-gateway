@@ -3,6 +3,7 @@ export interface ReceiveMessageRequest {
   returnGatewayID: string; // hex pubkey
   networkID: string;
   botid: string;
+  botType: "brain" | "id";
   groupID?: string;
   userId?: string;
   messageID?: string;
@@ -13,4 +14,3 @@ export interface ReceiveMessageResponse {
   status: "success" | "failure";
   description: string;
 }
-
