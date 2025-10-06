@@ -1,0 +1,22 @@
+{
+  "name": "beacon-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --hot src/server.ts",
+    "start": "bun run dist/server.js",
+    "build": "bun build --target=bun --outdir=dist src/server.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo 'No linter configured'"
+  },
+  "dependencies": {
+    "nostr-tools": "^2.7.2",
+    "@contextvm/sdk": "^0.1.0",
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "bun-types": "^1.1.20"
+  }
+}
