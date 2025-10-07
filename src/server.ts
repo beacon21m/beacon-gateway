@@ -9,6 +9,9 @@ const config: EnvConfig = {
   heartbeatMs: Number(process.env.HEARTBEAT_MS || 15000),
 };
 
+// Base URL for logs/clients; trimmed to avoid trailing slashes
+const API_BASE_URL = (process.env.API_BASE_URL || "http://localhost").replace(/\/+$/, "");
+
 const bus = new MessageBus(config.maxMessagesPerChannel);
 const routes = createMessageRoutes(bus);
 
@@ -58,5 +61,5 @@ const server = Bun.serve({
 });
 
 console.log(
-  `beacon-gateway listening on http://localhost:${server.port} (SSE heartbeat ${config.heartbeatMs}ms)`,
+  `beacon-gateway listening on ${API_BASE_URL}:${server.port} (SSE heartbeat ${config.heartbeatMs}ms)`,
 );
