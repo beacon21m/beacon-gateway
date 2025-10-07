@@ -51,15 +51,17 @@ class Channel {
       groupId: post.groupId,
       userId: post.userId,
       replyMessageId: post.messageId,
+      refId: post.refId,
       message: post.message,
       direction,
     };
     const item = this.buffer.push(payload);
     if (this.clients.size > 0) {
+      const enriched = { ...payload, eventId: item.id } as SseMessage;
       const chunk = [
         `id: ${item.id}`,
         `event: message`,
-        `data: ${JSON.stringify(payload)}`,
+        `data: ${JSON.stringify(enriched)}`,
         "\n",
       ].join("\n");
       for (const c of this.clients) c.send(chunk);
@@ -71,10 +73,11 @@ class Channel {
     this.clients.add(client);
     const backlog = this.buffer.since(lastEventId);
     for (const item of backlog) {
+      const enriched = { ...item.payload, eventId: item.id } as SseMessage;
       const chunk = [
         `id: ${item.id}`,
         `event: message`,
-        `data: ${JSON.stringify(item.payload)}`,
+        `data: ${JSON.stringify(enriched)}`,
         "\n",
       ].join("\n");
       client.send(chunk);

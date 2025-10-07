@@ -55,12 +55,14 @@ export async function startReturnCvmServer(bus: MessageBus) {
       groupId: a.groupID,
       userId: a.userId,
       messageId: a.messageID,
+      refId: a.refId,
       message: a.message,
     });
     return { content: [] } as any;
   });
 
   await server.connect(transport);
+  console.log(`[cvm:return] gateway pubkey ${pubkeyHex}`);
   console.log(
     `[cvm:return] server ready <- ${pubkeyHex.slice(0, 8)}… via ${relays.join(",")}`,
   );

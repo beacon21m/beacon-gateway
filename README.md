@@ -99,12 +99,20 @@ Event format
     - `groupId?` string
     - `userId?` string
     - `replyMessageId?` string — set to the original `POST.messageId` when present
+    - `refId?` string — CVM correlation id (outbound only, when provided)
     - `message` string
     - `direction` `in` | `out`
+    - `eventId` number — SSE id echoed in payload for clients that don’t surface the SSE id
 
 Reconnection and backfill
 - Clients may send `Last-Event-ID` (or `last-event-id`) to receive missed events since that id.
 - Each `{networkId}/{botId}#in` and `{networkId}/{botId}#out` stream maintains a ring buffer (capacity `MAX_MESSAGES_PER_CHANNEL`, default 500).
+
+Deduplication guidance
+- Do not deduplicate solely by `message` text. Use stable identifiers:
+  - Prefer `eventId` (unique, monotonic per channel) to identify events.
+  - Optionally use `refId` (from CVM) and/or `replyMessageId` to correlate logical replies.
+  - Identical texts may be legitimate retries; dropping them can lose messages.
 
 CORS
 - The server sets `access-control-allow-origin: *` for both POST and SSE to simplify adaptor integration.
