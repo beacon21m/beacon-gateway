@@ -47,7 +47,8 @@ export async function startReturnCvmServer(bus: MessageBus) {
     const a = ReceiveMessageSchema.parse(args);
     console.log("[cvm:return] receiveMessage", { target: pubkeyHex.slice(0, 8) + "…", a });
     const botType = a.botType ?? "brain";
-    bus.publish({
+    // Record outbound message (sent out from the gateway / returned from CVM)
+    bus.publishOutbound({
       networkId: a.networkID,
       botId: a.botid,
       botType,

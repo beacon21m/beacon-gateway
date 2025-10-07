@@ -13,6 +13,8 @@ export interface PostMessage {
   message: string;
 }
 
+export type Direction = "in" | "out";
+
 export interface SseMessage {
   networkId: NetworkId;
   botId: BotId;
@@ -21,6 +23,7 @@ export interface SseMessage {
   userId?: string;
   replyMessageId?: string; // maps from POST.messageId
   message: string;
+  direction: Direction; // 'in' (received by gateway) or 'out' (sent from gateway)
 }
 
 export interface EnvConfig {

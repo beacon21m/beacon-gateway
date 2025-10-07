@@ -1,4 +1,4 @@
-import type { BotId, NetworkId, PostMessage, SseMessage } from "../types";
+import type { BotId, NetworkId, PostMessage, SseMessage, Direction } from "../types";
 
 type ChannelKey = string; // `${networkId}/${botId}`
 
@@ -36,14 +36,14 @@ class RingBuffer {
 class Channel {
   readonly key: ChannelKey;
   private buffer: RingBuffer;
-  private client: SseClient | null = null; // single subscriber
+  private clients: Set<SseClient> = new Set(); // multi-subscriber
 
-  constructor(networkId: NetworkId, botId: BotId, capacity: number) {
-    this.key = `${networkId}/${botId}`;
+  constructor(networkId: NetworkId, botId: BotId, capacity: number, direction: Direction) {
+    this.key = `${networkId}/${botId}#${direction}`;
     this.buffer = new RingBuffer(capacity);
   }
 
-  publish(post: PostMessage) {
+  publish(post: PostMessage, direction: Direction) {
     const payload: SseMessage = {
       networkId: post.networkId,
       botId: post.botId,
@@ -52,38 +52,37 @@ class Channel {
       userId: post.userId,
       replyMessageId: post.messageId,
       message: post.message,
+      direction,
     };
     const item = this.buffer.push(payload);
-    if (this.client) {
-      const lines = [
+    if (this.clients.size > 0) {
+      const chunk = [
         `id: ${item.id}`,
         `event: message`,
         `data: ${JSON.stringify(payload)}`,
         "\n",
-      ];
-      this.client.send(lines.join("\n"));
+      ].join("\n");
+      for (const c of this.clients) c.send(chunk);
     }
     return item;
   }
 
   attach(client: SseClient, lastEventId: number | null) {
-    // Close previous
-    if (this.client) this.client.close();
-    this.client = client;
+    this.clients.add(client);
     const backlog = this.buffer.since(lastEventId);
     for (const item of backlog) {
-      const lines = [
+      const chunk = [
         `id: ${item.id}`,
         `event: message`,
         `data: ${JSON.stringify(item.payload)}`,
         "\n",
-      ];
-      this.client.send(lines.join("\n"));
+      ].join("\n");
+      client.send(chunk);
     }
   }
 
   detach(client: SseClient) {
-    if (this.client === client) this.client = null;
+    this.clients.delete(client);
   }
 }
 
@@ -91,30 +90,47 @@ export class MessageBus {
   private channels = new Map<ChannelKey, Channel>();
   constructor(private capacity: number) {}
 
-  private getChannel(networkId: NetworkId, botId: BotId): Channel {
-    const key = `${networkId}/${botId}`;
+  private getChannel(networkId: NetworkId, botId: BotId, direction: Direction): Channel {
+    const key = `${networkId}/${botId}#${direction}`;
     let ch = this.channels.get(key);
     if (!ch) {
-      ch = new Channel(networkId, botId, this.capacity);
+      ch = new Channel(networkId, botId, this.capacity, direction);
       this.channels.set(key, ch);
     }
     return ch;
   }
 
-  publish(m: PostMessage) {
-    return this.getChannel(m.networkId, m.botId).publish(m);
+  publishInbound(m: PostMessage) {
+    return this.getChannel(m.networkId, m.botId, "in").publish(m, "in");
   }
 
-  subscribe(
+  publishOutbound(m: PostMessage) {
+    return this.getChannel(m.networkId, m.botId, "out").publish(m, "out");
+  }
+
+  subscribeInbound(
     networkId: NetworkId,
     botId: BotId,
     client: SseClient,
     lastEventId: number | null,
   ) {
-    this.getChannel(networkId, botId).attach(client, lastEventId);
+    this.getChannel(networkId, botId, "in").attach(client, lastEventId);
   }
 
-  unsubscribe(networkId: NetworkId, botId: BotId, client: SseClient) {
-    this.getChannel(networkId, botId).detach(client);
+  unsubscribeInbound(networkId: NetworkId, botId: BotId, client: SseClient) {
+    this.getChannel(networkId, botId, "in").detach(client);
+  }
+
+  subscribeOutbound(
+    networkId: NetworkId,
+    botId: BotId,
+    client: SseClient,
+    lastEventId: number | null,
+  ) {
+    this.getChannel(networkId, botId, "out").attach(client, lastEventId);
+  }
+
+  unsubscribeOutbound(networkId: NetworkId, botId: BotId, client: SseClient) {
+    this.getChannel(networkId, botId, "out").detach(client);
   }
 }

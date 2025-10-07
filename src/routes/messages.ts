@@ -51,7 +51,8 @@ export function createMessageRoutes(bus: MessageBus) {
         );
       }
 
-      bus.publish(body);
+      // Record inbound message (received by the gateway)
+      bus.publishInbound(body);
       const shouldAwait = String(process.env.FORWARD_AWAIT || "false").toLowerCase() === "true";
       if (!shouldAwait) {
         forwardToCvm(body, { await: false }).catch((err) => console.error("[cvm] forward error", err));
@@ -78,8 +79,30 @@ export function createMessageRoutes(bus: MessageBus) {
     },
 
     async sse(url: URL, req: Request): Promise<Response> {
-      const networkId = url.pathname.split("/").at(-2)!;
-      const botId = url.pathname.split("/").at(-1)!;
+      const parts = url.pathname.split("/").filter(Boolean);
+      // Supported paths:
+      // - /api/messages/:networkId/:botId              (inbound, backward compatible)
+      // - /api/messages/in/:networkId/:botId           (inbound)
+      // - /api/messages/out/:networkId/:botId          (outbound)
+      const idxApi = parts.indexOf("api");
+      const idxMessages = parts.indexOf("messages", idxApi + 1);
+      const after = parts.slice(idxMessages + 1);
+
+      let streamKind: "in" | "out" = "in";
+      let networkId: string;
+      let botId: string;
+      if (after.length === 2) {
+        // /api/messages/:networkId/:botId
+        [networkId, botId] = after;
+        streamKind = "in";
+      } else if (after.length === 3 && (after[0] === "in" || after[0] === "out")) {
+        // /api/messages/(in|out)/:networkId/:botId
+        streamKind = after[0] as any;
+        networkId = after[1]!;
+        botId = after[2]!;
+      } else {
+        return new Response("Not Found", { status: 404 });
+      }
 
       const lastEventIdHeader = req.headers.get("last-event-id");
       const lastEventId = lastEventIdHeader ? Number(lastEventIdHeader) : null;
@@ -95,7 +118,12 @@ export function createMessageRoutes(bus: MessageBus) {
 
           // initial retry and ack headers
           client.send(`retry: 3000\n\n`);
-          bus.subscribe(networkId, botId, client, lastEventId);
+          // Subscribe to inbound-only messages for this channel
+          if (streamKind === "in") {
+            bus.subscribeInbound(networkId, botId, client, lastEventId);
+          } else {
+            bus.subscribeOutbound(networkId, botId, client, lastEventId);
+          }
 
           // heartbeat
           const heartbeatMs = Number(process.env.HEARTBEAT_MS || 15000);
@@ -103,7 +131,11 @@ export function createMessageRoutes(bus: MessageBus) {
 
           const abort = (reason?: unknown) => {
             clearInterval(interval);
-            bus.unsubscribe(networkId, botId, client);
+            if (streamKind === "in") {
+              bus.unsubscribeInbound(networkId, botId, client);
+            } else {
+              bus.unsubscribeOutbound(networkId, botId, client);
+            }
             try {
               controller.close();
             } catch {}
