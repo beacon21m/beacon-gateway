@@ -106,18 +106,56 @@ export function createMessageRoutes(bus: MessageBus) {
 
       const lastEventIdHeader = req.headers.get("last-event-id");
       const lastEventId = lastEventIdHeader ? Number(lastEventIdHeader) : null;
+      const heartbeatMs = Number(process.env.HEARTBEAT_MS || 15000);
+
+      let abortStream: ((reason?: unknown) => void) | undefined;
 
       const stream = new ReadableStream<Uint8Array>({
-        start: (controller) => {
+        start(controller) {
           const encoder = new TextEncoder();
-          const send = (text: string) => controller.enqueue(encoder.encode(text));
-          const client = {
+          let interval: ReturnType<typeof setInterval> | undefined;
+          let closed = false;
+          let removeAbortListener: (() => void) | undefined;
+          let client: { send: (chunk: string) => void; close: () => void } | undefined;
+
+          const abort = (reason?: unknown) => {
+            if (closed) return;
+            closed = true;
+            if (interval) clearInterval(interval);
+            removeAbortListener?.();
+            if (client) {
+              if (streamKind === "in") {
+                bus.unsubscribeInbound(networkId, botId, client);
+              } else {
+                bus.unsubscribeOutbound(networkId, botId, client);
+              }
+            }
+            try {
+              controller.close();
+            } catch (err) {
+              console.warn("[sse] failed to close controller", err);
+            }
+          };
+
+          abortStream = abort;
+
+          const send = (text: string) => {
+            if (closed) return;
+            try {
+              controller.enqueue(encoder.encode(text));
+            } catch (err) {
+              console.warn("[sse] enqueue failed; tearing down stream", err);
+              abort(err);
+            }
+          };
+
+          client = {
             send,
-            close: () => controller.close(),
+            close: () => abort(),
           };
 
           // initial retry and ack headers
-          client.send(`retry: 3000\n\n`);
+          send(`retry: 3000\n\n`);
           // Subscribe to inbound-only messages for this channel
           if (streamKind === "in") {
             bus.subscribeInbound(networkId, botId, client, lastEventId);
@@ -125,31 +163,32 @@ export function createMessageRoutes(bus: MessageBus) {
             bus.subscribeOutbound(networkId, botId, client, lastEventId);
           }
 
-          // heartbeat
-          const heartbeatMs = Number(process.env.HEARTBEAT_MS || 15000);
-          const interval = setInterval(() => client.send(`: ping\n\n`), heartbeatMs);
+          // heartbeat to keep intermediaries from idling the stream
+          interval = setInterval(() => send(`: ping\n\n`), heartbeatMs);
 
-          const abort = (reason?: unknown) => {
-            clearInterval(interval);
-            if (streamKind === "in") {
-              bus.unsubscribeInbound(networkId, botId, client);
-            } else {
-              bus.unsubscribeOutbound(networkId, botId, client);
+          const signal = req.signal as AbortSignal | null;
+          if (signal) {
+            if (signal.aborted) {
+              abort(signal.reason);
+              return;
             }
-            try {
-              controller.close();
-            } catch {}
-          };
-
-          (req.signal as AbortSignal).addEventListener("abort", () => abort());
+            const onAbort = () => abort(signal.reason);
+            signal.addEventListener("abort", onAbort);
+            removeAbortListener = () => signal.removeEventListener("abort", onAbort);
+          }
+        },
+        cancel(reason) {
+          abortStream?.(reason);
         },
       });
 
       return new Response(stream, {
         headers: {
-          "content-type": "text/event-stream",
+          "content-type": "text/event-stream; charset=utf-8",
           "cache-control": "no-cache, no-transform",
           connection: "keep-alive",
+          "keep-alive": `timeout=${Math.ceil((heartbeatMs * 3) / 1000)}, max=1000`,
+          "x-accel-buffering": "no",
           "access-control-allow-origin": "*",
         },
       });
