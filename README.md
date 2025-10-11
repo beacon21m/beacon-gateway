@@ -3,6 +3,8 @@
 Lightweight Bun + TypeScript HTTP server that forwards inbound messages to remote Context VM (CVM) services and streams responses back via Server‑Sent Events (SSE). Adaptors (e.g., Signal/WhatsApp clients) POST inbound user messages here and subscribe to SSE streams for both inbound and outbound traffic.
 
 Key endpoints
+- POST `/api/attach` — register an adaptor (network + bot type/id) with the gateway
+- GET `/api/adaptorIDs` — list adaptor registrations kept by the gateway
 - POST `/api/messages` — submit an inbound message to the gateway (and forward to CVM)
 - GET `/api/messages/:networkId/:botId` — SSE inbound stream (back‑compat alias of `.../in/...`)
 - GET `/api/messages/in/:networkId/:botId` — SSE inbound stream (messages received by gateway)
@@ -35,6 +37,35 @@ Key endpoints
   - Back-compat inbound: `curl -N http://localhost:3030/api/messages/signal/123`
 
 ## API Details
+
+### POST /api/attach
+
+Purpose
+- Allow adaptors to announce themselves to the gateway so remote Brain/ID services can discover available bot ids.
+
+Body (JSON)
+- `networkId` string — adaptor’s messaging network (`whatsapp`, `signal`, etc.)
+- `botId` string — adaptor-specific bot/device identifier
+- `botType` string — `brain` | `id`
+- `adaptorType` string (optional) — friendly adaptor label, e.g. `whatsapp-bot`
+- `metadata` object (optional) — arbitrary adaptor details
+
+Responses
+- 200 OK: `{ "status": "attached", "adaptor": {...} }` with timestamps (`attachedAt`, `lastSeenAt`) and the stored fields.
+- 400: `{ "error": "missing_field:<name>" | "invalid_field:botType" | "invalid_field:metadata" | "invalid_json" }` on validation errors.
+
+Notes
+- Re-attaching with the same `networkId` + `botId` + `botType` updates `lastSeenAt` while preserving the original `attachedAt`.
+
+### GET /api/adaptorIDs
+
+Purpose
+- Provide a lightweight discovery endpoint for remote Brain/ID CVMs to list the adaptors registered on this gateway.
+
+Response
+- 200 OK: `{ "adaptors": [ { "networkId", "botId", "botType", "adaptorType?", "metadata?", "attachedAt", "lastSeenAt" } ] }`
+  - Timestamps are ISO 8601 strings.
+- Always returns an array (empty when no adaptors have attached).
 
 ### POST /api/messages
 

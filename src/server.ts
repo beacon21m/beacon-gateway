@@ -2,6 +2,8 @@ import { MessageBus } from "./sse/bus";
 import type { EnvConfig } from "./types";
 import { createMessageRoutes } from "./routes/messages";
 import { startReturnCvmServer } from "./cvm/returnServer";
+import { AdaptorRegistry } from "./adaptors/registry";
+import { createAdaptorRoutes } from "./routes/adaptors";
 
 const config: EnvConfig = {
   port: Number(process.env.PORT || 3030),
@@ -14,6 +16,8 @@ const API_BASE_URL = (process.env.API_BASE_URL || "http://localhost").replace(/\
 
 const bus = new MessageBus(config.maxMessagesPerChannel);
 const routes = createMessageRoutes(bus);
+const adaptorRegistry = new AdaptorRegistry();
+const adaptorRoutes = createAdaptorRoutes(adaptorRegistry);
 
 // Start CVM return server (no announce, no whitelist)
 startReturnCvmServer(bus).catch((err) => {
@@ -34,6 +38,16 @@ const server = Bun.serve({
           "access-control-allow-headers": "content-type,last-event-id",
         },
       });
+    }
+
+    // POST /api/attach
+    if (req.method === "POST" && url.pathname === adaptorRoutes.attachPath) {
+      return adaptorRoutes.attach(req);
+    }
+
+    // GET /api/adaptorIDs
+    if (req.method === "GET" && url.pathname === adaptorRoutes.listPath) {
+      return adaptorRoutes.list();
     }
 
     // POST /api/messages
