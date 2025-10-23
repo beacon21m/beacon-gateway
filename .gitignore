@@ -3,5 +3,7 @@ node_modules/
 .DS_Store
 .env
 docs/
-
+logs/
+logs/*.log
+logs/*.log.*
 

@@ -19,12 +19,13 @@ Key endpoints
 2) Configure environment
 - From `server/`, copy the example env and adjust values:
   - `cp .env_example .env`
-  - Edit `.env` to set your gateway key, CVM pubkeys, and relays.
+ - Edit `.env` to set your gateway key, CVM pubkeys, and relays.
 
 3) Install and run
 - `bun install`
 - `bun run dev`
 - Server logs: `beacon-gateway listening on http://localhost:3030 …`
+- Console output is mirrored to `logs/out.log` (stdout) and `logs/error.log` (stderr) with daily rotation keeping the seven most recent files.
 
 4) Test locally
 - Send a message
